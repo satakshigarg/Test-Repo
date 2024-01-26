@@ -2,8 +2,8 @@ provider "aws" {
   region = "us-east-1"
 }
 
-resource "aws_security_group" "security_group" {
-  name        = "security-group"
+resource "aws_security_group" "security_group_geth" {
+  name        = "security-group-geth"
   description = "Security group for Geth node"
 
   ingress {
@@ -45,8 +45,8 @@ resource "aws_security_group" "security_group" {
   }
 }
 
-resource "aws_iam_role" "iam_role" {
-  name = "iam-role"
+resource "aws_iam_role" "iam_role_geth" {
+  name = "iam-role-geth"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -81,30 +81,30 @@ resource "aws_iam_role" "iam_role" {
   }
 }
 
-resource "aws_iam_instance_profile" "iam_instance_profile" {
-  name = "iam-instance-profile"
-  role = aws_iam_role.iam_role.name
+resource "aws_iam_instance_profile" "iam_instance_profile_geth" {
+  name = "iam-instance-profile-geth"
+  role = aws_iam_role.iam_role_geth.name
 }
 
 # Create CloudWatch log group
-resource "aws_cloudwatch_log_group" "log_group" {
-  name              = "log-group"
+resource "aws_cloudwatch_log_group" "log_group_geth" {
+  name              = "log-group-geth"
   retention_in_days = 7
 }
 
-resource "aws_instance" "instance" {
+resource "aws_instance" "instance_geth" {
   ami           = "ami-aa2ea6d0"
   instance_type = "t2.medium"
   count         = 1
-  key_name      = "YOUR-KEY-PAIR" # ENTER YOUR KEY PAIR
+  key_name      = "keypair"
   associate_public_ip_address = true
 
-  iam_instance_profile     = aws_iam_instance_profile.iam_instance_profile.name
-  vpc_security_group_ids   = [aws_security_group.security_group.id]
+  iam_instance_profile     = aws_iam_instance_profile.iam_instance_profile_geth.name
+  vpc_security_group_ids   = [aws_security_group.security_group_geth.id]
   monitoring               = true  # Enable detailed monitoring
 
   tags = {
-    Name = "instance"
+    Name = "instance-geth"
   }
 
   user_data = <<-EOF
@@ -115,25 +115,41 @@ resource "aws_instance" "instance" {
               sudo apt-get update
               sudo apt-get install -y ethereum
 
+              # Create directories if they don't exist
+              sudo mkdir -p /etc/awslogs/awslogs.conf.d/
+
+              # Write the AWS logs configuration to geth.conf
+              sudo tee /etc/awslogs/awslogs.conf.d/geth.conf > /dev/null <<AWSLOGCONF
+              /var/log/syslog {
+                  missingok
+                  monthly
+                  create 0644 root root
+                  rotate 5
+              }
+              AWSLOGCONF
+
+              # Restart awslogs service
+              sudo systemctl restart awslogs
+
               # Install Prometheus and node_exporter
               sudo apt-get install -y prometheus
               sudo apt-get install -y prometheus-node-exporter
 
               # Configure Prometheus
-              sudo cat <<EOL > /etc/prometheus/prometheus.yml
-                global:
-                  scrape_interval:     15s
-                  evaluation_interval: 15s
+              sudo cat <<PROMCONF > /etc/prometheus/prometheus.yml
+              global:
+                scrape_interval:     15s
+                evaluation_interval: 15s
 
-                scrape_configs:
-                  - job_name: 'geth'
-                    static_configs:
-                      - targets: ['localhost:8545'] # Assuming Geth is running on the same instance
+              scrape_configs:
+                - job_name: 'geth'
+                  static_configs:
+                    - targets: ['localhost:8545'] # Assuming Geth is running on the same instance
 
-                  - job_name: 'node_exporter'
-                    static_configs:
-                      - targets: ['localhost:9100'] # Assuming node_exporter is running on the same instance
-              EOL
+                - job_name: 'node_exporter'
+                  static_configs:
+                    - targets: ['localhost:9100'] # Assuming node_exporter is running on the same instance
+              PROMCONF
 
               # Start Prometheus
               sudo systemctl enable prometheus
@@ -142,26 +158,11 @@ resource "aws_instance" "instance" {
               # Start node_exporter
               sudo systemctl enable prometheus-node-exporter
               sudo systemctl start prometheus-node-exporter
-
-              # Configure CloudWatch logging
-              sudo apt-get install -y awslogs
-              sudo service awslogs start
-              sudo systemctl enable awslogs
-
-              # Use the created log group name
-              sudo echo "/var/log/syslog {
-                missingok
-                monthly
-                create 0644 root root
-                rotate 5
-              }" | sudo tee /etc/awslogs/awslogs.conf.d/geth.conf
-
-              sudo systemctl restart awslogs
             EOF
 }
 
-resource "aws_cloudwatch_log_stream" "log_stream" {
-  name           = "instance-log-stream"
-  log_group_name = aws_cloudwatch_log_group.log_group.name
-  depends_on     = [aws_instance.instance]
+resource "aws_cloudwatch_log_stream" "log_stream_geth" {
+  name           = "instance-log-stream-geth"
+  log_group_name = aws_cloudwatch_log_group.log_group_geth.name
+  depends_on     = [aws_instance.instance_geth]
 }
