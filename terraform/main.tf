@@ -96,7 +96,7 @@ resource "aws_instance" "instance_geth" {
   ami           = "ami-aa2ea6d0"
   instance_type = "t2.medium"
   count         = 1
-  key_name      = "keypair"
+  key_name      = "keypair" 
   associate_public_ip_address = true
 
   iam_instance_profile     = aws_iam_instance_profile.iam_instance_profile_geth.name
@@ -114,6 +114,9 @@ resource "aws_instance" "instance_geth" {
               sudo add-apt-repository -y ppa:ethereum/ethereum
               sudo apt-get update
               sudo apt-get install -y ethereum
+
+              # Start Geth syncing with MAINNET
+              geth --port=30303 --syncmode "full" --cache=1024
 
               # Create directories if they don't exist
               sudo mkdir -p /etc/awslogs/awslogs.conf.d/
