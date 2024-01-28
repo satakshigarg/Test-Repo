@@ -116,8 +116,8 @@ resource "aws_instance" "instance_geth" {
               sudo apt-get install -y ethereum
 
               # Start Geth syncing with MAINNET
-              geth --port=30303 --syncmode "full" --cache=1024 --http --http.api eth,net,web3
-
+              geth --syncmode "full" --cache=1024 --http --http.api 'web3,eth,net,debug,personal' --http.corsdomain '*'
+              
               # Create directories if they don't exist
               sudo mkdir -p /etc/awslogs/awslogs.conf.d/
 
